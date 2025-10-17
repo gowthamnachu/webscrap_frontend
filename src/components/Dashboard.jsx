@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { dataAPI } from '../services/api';
+import { showSuccess, showError, showWarning, showLoading, updateToast } from '../utils/toast';
 import '../components.css';
 
 const Dashboard = ({ onDataSelect }) => {
@@ -22,19 +23,25 @@ const Dashboard = ({ onDataSelect }) => {
       setRecentData(dataRes.data.data);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
+      showError('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this data?')) return;
+    if (!window.confirm('Are you sure you want to delete this data?')) return;
+    
+    const toastId = showLoading('Deleting...');
+    
     try {
-      await dataAPI.deleteData(id);
-      alert('Deleted successfully!');
+      const response = await dataAPI.deleteData(id);
+      updateToast(toastId, 'success', response.data.message || 'Deleted successfully!');
       loadDashboardData();
     } catch (error) {
-      alert('Failed to delete');
+      console.error('Delete error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to delete';
+      updateToast(toastId, 'error', errorMessage);
     }
   };
 

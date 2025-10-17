@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 import { scraperAPI } from '../services/api';
+import { showSuccess, showError, showWarning, showLoading, updateToast } from '../utils/toast';
 import '../components.css';
 
 const ScrapeForm = ({ onScrapeComplete, onPreview }) => {
@@ -13,11 +14,13 @@ const ScrapeForm = ({ onScrapeComplete, onPreview }) => {
   const handleSubmit = async (e, isPreview = false) => {
     e.preventDefault();
     if (!url.trim()) {
-      alert('Please enter a URL');
+      showWarning('Please enter a URL');
       return;
     }
 
+    const toastId = showLoading(isPreview ? 'Loading preview...' : 'Scraping URL...');
     setLoading(true);
+    
     try {
       const payload = { 
         url, 
@@ -36,7 +39,12 @@ const ScrapeForm = ({ onScrapeComplete, onPreview }) => {
         onScrapeComplete(response.data);
       }
       
-      alert(isPreview ? 'Preview loaded!' : 'URL scraped and saved!');
+      const successMessage = isPreview 
+        ? '✨ Preview loaded successfully!' 
+        : response.data.message || '✅ URL scraped and saved!';
+      
+      updateToast(toastId, 'success', successMessage);
+      
       if (!isPreview) {
         setUrl('');
         setCustomPrompt('');
@@ -48,7 +56,7 @@ const ScrapeForm = ({ onScrapeComplete, onPreview }) => {
         || error.message
         || 'Failed to scrape URL';
       
-      alert(`❌ ${errorMessage}`);
+      updateToast(toastId, 'error', `❌ ${errorMessage}`);
     } finally {
       setLoading(false);
     }

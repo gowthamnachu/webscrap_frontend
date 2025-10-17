@@ -1,4 +1,6 @@
 ﻿import { useState } from 'react';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import ScrapeForm from './components/ScrapeForm';
 import DataDisplay from './components/DataDisplay';
 import Dashboard from './components/Dashboard';
@@ -25,6 +27,25 @@ function App() {
 
   return (
     <div className="App">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+        toastStyle={{
+          background: '#1a1a1a',
+          color: '#e0e0e0',
+          border: '1px solid #2a2a2a',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+        }}
+      />
       <header className="app-header">
         <div className="container">
           <div className="app-header-content">
