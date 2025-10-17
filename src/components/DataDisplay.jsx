@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { showSuccess } from '../utils/toast';
 import '../components.css';
 
 const DataDisplay = ({ data }) => {
@@ -43,7 +44,7 @@ const DataDisplay = ({ data }) => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    alert('Copied to clipboard!');
+    showSuccess('📋 Copied to clipboard!');
   };
 
   const downloadJSON = () => {
@@ -55,6 +56,7 @@ const DataDisplay = ({ data }) => {
     link.download = `scraped-data-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    showSuccess('📥 JSON downloaded successfully!');
   };
 
   const renderOriginalData = () => (
