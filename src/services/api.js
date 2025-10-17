@@ -18,8 +18,8 @@ export const scraperAPI = {
 export const dataAPI = {
   // Updated to match Netlify Functions endpoints
   getAllData: (page = 1, limit = 10) => api.get(`/data?page=${page}&limit=${limit}`),
-  getStatistics: () => api.get('/data/stats'),
-  deleteData: (id) => api.delete(`/data/${id}`),
+  getStatistics: () => api.get('/stats'),
+  deleteData: (id) => api.delete(`/data?id=${id}`),
 };
 
 export default api;
