@@ -14,17 +14,10 @@ const Dashboard = ({ onDataSelect }) => {
   useEffect(() => {
     loadDashboardData();
     
-    // Auto-refresh dashboard every 60 seconds
+    // Auto-refresh every 60 seconds
     const refreshInterval = setInterval(() => {
       if (autoRefresh) {
         loadDashboardData(true); // silent refresh
-      }
-    }, 60000); // 60 seconds
-
-    // Auto-refresh stale URLs every 60 seconds
-    const urlRefreshInterval = setInterval(() => {
-      if (autoRefresh) {
-        refreshStaleUrls();
       }
     }, 60000); // 60 seconds
 
@@ -40,7 +33,6 @@ const Dashboard = ({ onDataSelect }) => {
 
     return () => {
       clearInterval(refreshInterval);
-      clearInterval(urlRefreshInterval);
       clearInterval(countdownInterval);
     };
   }, [autoRefresh]);
@@ -82,20 +74,6 @@ const Dashboard = ({ onDataSelect }) => {
   const toggleAutoRefresh = () => {
     setAutoRefresh(!autoRefresh);
     showSuccess(autoRefresh ? 'Auto-refresh disabled' : 'Auto-refresh enabled');
-  };
-
-  const refreshStaleUrls = async () => {
-    try {
-      const response = await dataAPI.refreshStaleUrls(60000); // 60 seconds
-      if (response.data.success) {
-        showInfo(`🔄 ${response.data.message}`);
-        // Reload dashboard to show updated data
-        setTimeout(() => loadDashboardData(true), 2000);
-      }
-    } catch (error) {
-      console.error('Failed to refresh stale URLs:', error);
-      // Don't show error toast for background refresh - fail silently
-    }
   };
 
   const handleDelete = async (id) => {
