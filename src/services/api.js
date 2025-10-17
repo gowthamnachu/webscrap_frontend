@@ -20,6 +20,7 @@ export const dataAPI = {
   getAllData: (page = 1, limit = 10) => api.get(`/data?page=${page}&limit=${limit}`),
   getStatistics: () => api.get('/stats'),
   deleteData: (id) => api.delete(`/data?id=${id}`),
+  refreshStaleUrls: (refreshInterval = 60000) => api.post('/refresh', { refreshInterval }),
 };
 
 export default api;

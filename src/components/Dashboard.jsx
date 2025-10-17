@@ -1,38 +1,100 @@
 import { useState, useEffect } from 'react';
 import { dataAPI } from '../services/api';
-import { showSuccess, showError, showWarning, showLoading, updateToast } from '../utils/toast';
+import { showSuccess, showError, showWarning, showLoading, updateToast, showInfo } from '../utils/toast';
 import '../components.css';
 
 const Dashboard = ({ onDataSelect }) => {
   const [stats, setStats] = useState(null);
   const [recentData, setRecentData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [countdown, setCountdown] = useState(60);
 
   useEffect(() => {
     loadDashboardData();
     
-    // Auto-refresh dashboard every 5 minutes
-    const interval = setInterval(() => {
-      loadDashboardData();
-    }, 5 * 60 * 1000);
+    // Auto-refresh dashboard every 60 seconds
+    const refreshInterval = setInterval(() => {
+      if (autoRefresh) {
+        loadDashboardData(true); // silent refresh
+      }
+    }, 60000); // 60 seconds
 
-    return () => clearInterval(interval);
-  }, []);
+    // Auto-refresh stale URLs every 60 seconds
+    const urlRefreshInterval = setInterval(() => {
+      if (autoRefresh) {
+        refreshStaleUrls();
+      }
+    }, 60000); // 60 seconds
 
-  const loadDashboardData = async () => {
+    // Countdown timer
+    const countdownInterval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(refreshInterval);
+      clearInterval(urlRefreshInterval);
+      clearInterval(countdownInterval);
+    };
+  }, [autoRefresh]);
+
+  const loadDashboardData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       const [statsRes, dataRes] = await Promise.all([
         dataAPI.getStatistics(),
         dataAPI.getAllData(1, 5)
       ]);
       setStats(statsRes.data.data);
       setRecentData(dataRes.data.data);
+      setLastUpdated(new Date());
+      setCountdown(60); // Reset countdown
+      
+      if (silent) {
+        showInfo('Dashboard refreshed');
+      }
     } catch (error) {
       console.error('Failed to load dashboard:', error);
-      showError('Failed to load dashboard data');
+      if (!silent) {
+        showError('Failed to load dashboard data');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleRefresh = () => {
+    showInfo('Refreshing dashboard...');
+    loadDashboardData(false);
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+    showSuccess(autoRefresh ? 'Auto-refresh disabled' : 'Auto-refresh enabled');
+  };
+
+  const refreshStaleUrls = async () => {
+    try {
+      const response = await dataAPI.refreshStaleUrls(60000); // 60 seconds
+      if (response.data.success) {
+        showInfo(`🔄 ${response.data.message}`);
+        // Reload dashboard to show updated data
+        setTimeout(() => loadDashboardData(true), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to refresh stale URLs:', error);
+      // Don't show error toast for background refresh - fail silently
     }
   };
 
@@ -52,37 +114,6 @@ const Dashboard = ({ onDataSelect }) => {
     }
   };
 
-  // Helper function to format time ago
-  const getTimeAgo = (dateString) => {
-    const now = new Date();
-    const past = new Date(dateString);
-    const diffInMs = now - past;
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
-    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-    if (diffInDays === 1) return 'Yesterday';
-    if (diffInDays < 7) return `${diffInDays} days ago`;
-    
-    // For older dates, show the actual date
-    return past.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: past.getFullYear() !== now.getFullYear() ? 'numeric' : undefined 
-    });
-  };
-
-  // Helper function to check if scrape is from today or last 24 hours
-  const isRecentScrape = (dateString) => {
-    const now = new Date();
-    const past = new Date(dateString);
-    const diffInHours = (now - past) / (1000 * 60 * 60);
-    return diffInHours <= 24;
-  };
-
   if (loading) return (
     <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
       <div className="spinner spinner-large" style={{ margin: '0 auto' }}></div>
@@ -90,9 +121,83 @@ const Dashboard = ({ onDataSelect }) => {
     </div>
   );
 
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return 'Never';
+    const now = new Date();
+    const diff = Math.floor((now - lastUpdated) / 1000); // seconds
+    
+    if (diff < 60) return `${diff} seconds ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    return lastUpdated.toLocaleTimeString();
+  };
+
+  const formatTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000); // seconds
+    
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  const getDataFreshnessColor = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 60000); // minutes
+    
+    if (diff < 5) return '#10b981'; // green - very fresh
+    if (diff < 30) return '#3b82f6'; // blue - fresh
+    if (diff < 60) return '#f59e0b'; // yellow - getting old
+    return '#ef4444'; // red - old
+  };
+
   return (
     <div>
-      <h2 style={{ color: 'var(--color-text-primary)', marginBottom: '1.5rem', fontSize: '2rem' }}>📊 Dashboard</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h2 style={{ color: 'var(--color-text-primary)', fontSize: '2rem', margin: 0 }}>📊 Dashboard</h2>
+        
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Last Updated Info */}
+          <div style={{ 
+            padding: '0.5rem 1rem', 
+            background: 'var(--color-dark-grey)', 
+            borderRadius: '8px',
+            border: '1px solid var(--color-medium-grey)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+              🕐 Updated: {formatLastUpdated()}
+            </span>
+            {autoRefresh && (
+              <span className="badge badge-success" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
+                Next: {countdown}s
+              </span>
+            )}
+          </div>
+
+          {/* Auto-refresh Toggle */}
+          <button
+            onClick={toggleAutoRefresh}
+            className={autoRefresh ? 'btn btn-success' : 'btn btn-secondary'}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+          >
+            {autoRefresh ? '✅ Auto-Refresh ON' : '⏸️ Auto-Refresh OFF'}
+          </button>
+
+          {/* Manual Refresh Button */}
+          <button
+            onClick={handleRefresh}
+            className="btn btn-primary"
+            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+          >
+            🔄 Refresh Now
+          </button>
+        </div>
+      </div>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         <div className="card" style={{ textAlign: 'center' }}>
@@ -109,13 +214,6 @@ const Dashboard = ({ onDataSelect }) => {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: '1rem' }}>Unique URLs</div>
           <div className="badge badge-secondary" style={{ marginTop: '0.75rem' }}>🔗 Sources</div>
         </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.5rem' }}>
-            {stats?.recentScrapes || 0}
-          </div>
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: '1rem' }}>Last 24 Hours</div>
-          <div className="badge badge-success" style={{ marginTop: '0.75rem' }}>⏰ Recent</div>
-        </div>
       </div>
 
       <div className="card">
@@ -124,79 +222,66 @@ const Dashboard = ({ onDataSelect }) => {
           <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem' }}>No data found. Start scraping to see results here!</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {recentData.map((item) => {
-              const isRecent = isRecentScrape(item.created_at);
-              const timeAgo = getTimeAgo(item.created_at);
-              
-              return (
-                <div key={item.id} className="card" style={{ 
-                  padding: '1.25rem', 
-                  background: 'var(--color-dark-grey)', 
-                  border: isRecent ? '1px solid #10b981' : '1px solid var(--color-medium-grey)',
-                  borderLeft: isRecent ? '4px solid #10b981' : '1px solid var(--color-medium-grey)',
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '1rem',
-                  position: 'relative'
-                }}>
-                  {isRecent && (
-                    <div style={{ 
-                      position: 'absolute', 
-                      top: '0.75rem', 
-                      right: '0.75rem',
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem',
-                      background: '#10b981',
-                      color: '#000',
-                      borderRadius: '4px',
-                      fontWeight: 'bold'
-                    }}>
-                      🔥 NEW
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: '250px' }}>
-                    <h4 style={{ marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
+            {recentData.map((item) => (
+              <div key={item.id} className="card" style={{ 
+                padding: '1.25rem', 
+                background: 'var(--color-dark-grey)', 
+                border: '1px solid var(--color-medium-grey)',
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                position: 'relative'
+              }}>
+                {/* Freshness Indicator */}
+                <div style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: getDataFreshnessColor(item.created_at),
+                  boxShadow: `0 0 10px ${getDataFreshnessColor(item.created_at)}`,
+                  animation: 'pulse 2s infinite'
+                }}></div>
+
+                <div style={{ flex: 1, minWidth: '250px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <h4 style={{ margin: 0, color: 'var(--color-text-primary)' }}>
                       {item.title || 'Untitled'}
                     </h4>
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" 
-                       style={{ color: '#4299e1', fontSize: '0.9rem', wordBreak: 'break-all', display: 'block', marginBottom: '0.5rem' }}>
-                      🔗 {item.url}
-                    </a>
-                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        ⏰ <span style={{ color: isRecent ? '#10b981' : 'var(--color-text-muted)', fontWeight: isRecent ? 'bold' : 'normal' }}>{timeAgo}</span>
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        📅 {new Date(item.created_at).toLocaleString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </div>
-                    </div>
+                    <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
+                      {formatTimeAgo(item.created_at)}
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button
-                      onClick={() => onDataSelect && onDataSelect(item)}
-                      className="btn btn-primary"
-                      style={{ padding: '0.75rem 1.25rem' }}
-                    >
-                      👁️ View
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="btn btn-secondary"
-                      style={{ padding: '0.75rem 1.25rem', borderColor: '#ef4444' }}
-                    >
-                      🗑️ Delete
-                    </button>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" 
+                     style={{ color: '#4299e1', fontSize: '0.9rem', wordBreak: 'break-all', display: 'block', marginBottom: '0.5rem' }}>
+                    🔗 {item.url}
+                  </a>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                    ⏰ Scraped: {new Date(item.created_at).toLocaleString()}
                   </div>
                 </div>
-              );
-            })}
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => onDataSelect && onDataSelect(item)}
+                    className="btn btn-primary"
+                    style={{ padding: '0.75rem 1.25rem' }}
+                  >
+                    👁️ View
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.75rem 1.25rem', borderColor: '#ef4444' }}
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
